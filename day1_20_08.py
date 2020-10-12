@@ -4,6 +4,12 @@ from matplotlib import pyplot as plt
 import numpy as np
 
 
+def get_contour_precedence(contour, cols):
+    tolerance_factor = 10
+    origin = cv2.boundingRect(contour)
+    return ((origin[1] // tolerance_factor) * tolerance_factor) * cols + origin[0]
+
+
 def image_resize(image, width=None, height=None, inter=cv2.INTER_AREA):
     # initialize the dimensions of the image to be resized and
     # grab the image size
@@ -55,6 +61,32 @@ def get_4_corner(pts):
     return [top_left[0], top_right[2], bot_right[3], bot_left[1]]
 
 
+def draw_rectangle(img, pts_1, pst_2, h, w):
+    x = pts_1.tolist()[0]
+    cv2.rectangle(img, (x[0][0], x[0][1]), (x[0][0] + w, x[0][1] + h), 3)
+    crop_img = img[x[0][1]: x[0][1] + h,x[0][0]: x[0][0] +w]
+    return crop_img
+
+
+def split_boxs(img):
+    rows  = np.hsplit(img, 5)
+    cv2.imshow("Split", rows[0])
+    cv2.imshow("Split 2", rows[1])
+
+
+def get_circles(mssv, img):
+    img_cnt, cnt, hier = cv2.findContours(img.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+    for c in cnt:
+        are = cv2.contourArea(c)
+        if are > 10:
+            cv2.drawContours(mssv, c, -1, (255, 0, 255), 1)
+            peri = cv2.arcLength(c, True)
+            approx = cv2.approxPolyDP(c, 0.02*peri, True)
+            objCor = len(approx)
+            x, y, w, h = cv2.boundingRect(approx)
+            if objCor > 4: obj = 'Circle'
+            cv2.rectangle(mssv, (x, y), (x+w, y+h), (0,255,0), 2)
+
 
 # Load image, grayscale, Gaussian blur, Otsu's threshold
 image = cv2.imread("IMG_6011.JPG")
@@ -80,23 +112,8 @@ for c in cnts:
 # Obtain birds' eye view of image
 warped = four_point_transform(image, displayCnt.reshape(4, 2))
 
-# # cv2.imshow("thresh", thresh)
-# # cv2.imwrite("thresh.png", thresh)
-# # cv2.imshow("warped", warped)
-# # cv2.imwrite("warped.png", warped)
-# # mask = cv2.inRange(warped, np.array([0, 0, 0]), np.array([180, 255,30]))
-# mask = cv2.inRange(warped, (0, 0, 0, 0), (180, 255, 70, 0))
-# # cnt = cnts[4]
-# # draw = cv2.drawContours(warped, [cnts], 0, (0, 255, 0), 3)
-# cv2.imshow("HSV", mask)
-# cv2.imwrite("HSV.png", mask)
-
-
-# cv2.waitKey(0)
-
-
+# Get 4 big square
 gray = cv2.cvtColor(warped.copy(), cv2.COLOR_BGR2GRAY)
-# gray = cv2.blur(gray, (11, 11))
 ret, thresh = cv2.threshold(gray, 60, 255, cv2.THRESH_BINARY_INV)
 img, contour, hierrachy = cv2.findContours(thresh, 1, 2)
 black_point = list()
@@ -114,25 +131,106 @@ for c, cnt in enumerate(contour):
         cv2.rectangle(warped, (x, y), (x + w, y + h), (0, 255, 0), 2)
 
 a = get_4_corner(black_point)
-# count = np.asarray(boundary)
-# max_height = np.max(count[::, 3])
-# nearest = max_height * 1.4
-# boundary.sort(key=lambda r: [int(nearest * round(float(r[1]) / nearest)), r[0]])
-# aaaaa = list()
-#
-# for i in boundary:
-#     bbbb = list()
-#     for idx, val in enumerate(i):
-#         if idx < 2:
-#             bbbb.append(val)
-#     aaaaa.append(bbbb)
-
 a = np.array(a)
 second = four_point_transform(warped, a)
-# mask = cv2.inRange(second, (0, 0, 0, 0), (180, 255, 70, 0))
 
-plt.imshow(warped)
-plt.imshow(second)
-# plt.imshow(mask)
-plt.show()
-cv2.waitKey(0)
+# get small square
+mask = cv2.inRange(second, (0, 0, 0, 0), (180, 255, 70, 0))
+
+_, cont, hier = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+
+mini_square = list()
+mini_bouding = list()
+mini_cont = list()
+for ca in cont:
+    area = cv2.contourArea(ca)
+    if 40 < area < 100:
+        cv2.drawContours(second, ca, -1, (255, 0, 255), 1)
+        peri = cv2.arcLength(ca, True)
+        approx = cv2.approxPolyDP(ca, 0.02 * peri, True)
+        mini_square.append(approx)
+        mini_cont.append(ca)
+        x, y, w, h = cv2.boundingRect(approx)
+        mini_bouding.append((x, y, w, h))
+
+mini_cont.sort(key=lambda x: get_contour_precedence(x, second.shape[1]))
+# for i in range(len(mini_cont)):
+#     second = cv2.putText(second, str(i), cv2.boundingRect(mini_cont[i])[:2], cv2.FONT_ITALIC, 1, [125])
+
+from collections import defaultdict
+
+new_pos = dict()
+cols = defaultdict(list)
+y_values = list()
+
+y_value = None
+col = 1
+for ca in mini_cont:
+    area = cv2.contourArea(ca)
+    if 40 < area < 100:
+        peri = cv2.arcLength(ca, True)
+        approx = cv2.approxPolyDP(ca, 0.02 * peri, True)
+        x, y, w, h = cv2.boundingRect(approx)
+        new_pos[(x, y, w, h)] = ca
+        if y_value is None:
+            y_value = y
+            cols[col].append((x, y, w, h))
+            continue
+        elif y_value - 2 < y < y_value + 2:
+            cols[col].append((x, y, w, h))
+        else:
+            col += 1
+            cols[col].append((x, y, w, h))
+            y_value = y
+
+list_of_contour = defaultdict(list)
+for column in cols:
+    for c in cols[column]:
+        # second = cv2.putText(second, str(column), cv2.boundingRect(new_pos.get(c))[:2], cv2.FONT_ITALIC, 1, [125])
+        list_of_contour[column].append(new_pos.get(c))
+
+# draw rectangle
+blocks = list()
+mssv = None
+ma_de = None
+for key in list(list_of_contour):
+    if key == 1:
+        for idx, val in enumerate(list_of_contour.get(key)):
+            if idx == 0:
+                pst_2 = list_of_contour.get(2)[0]
+                mssv = draw_rectangle(second, val, pst_2, 160, 100)
+            if idx == 1:
+                pst_2 = list_of_contour.get(2)[1]
+                ma_de = draw_rectangle(second, val, pst_2, 160, 60)
+
+    if key == 2:
+        continue
+    if key == 6:
+        continue
+
+    for idx, val in enumerate(list_of_contour.get(key)):
+        # if idx == 0:
+        pst_2 = list_of_contour.get(key)[0]
+        block = draw_rectangle(second, val, pst_2, 160, 70)
+        blocks.append(block)
+
+mssv = cv2.cvtColor(mssv, cv2.COLOR_BGR2GRAY)
+mssv_thresh = cv2.threshold(mssv, 150, 255, cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)[1]
+
+# for idx, b in enumerate(blocks):
+#     cv2.imshow(f'block: {idx}', b)
+#     cv2.imwrite(f'block{idx}.jpg', b)
+# cv2.imshow('second', second)
+# cv2.imshow('mssv', mssv)
+# cv2.imwrite(f'mssv.jpg', mssv)
+# cv2.imshow('mssv', mssv_thresh)
+# cv2.imwrite(f'mssv_thresh.jpg', mssv_thresh)
+#
+# cv2.imshow('ma de', ma_de)
+# cv2.imwrite(f'ma_de.jpg', ma_de)
+
+# cv2.imshow('second', second)
+# cv2.imwrite('col_num.jpg', second)
+
+# plt.show()
+# cv2.waitKey(0)
