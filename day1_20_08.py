@@ -2,7 +2,7 @@ from imutils.perspective import four_point_transform, order_points
 import cv2
 from matplotlib import pyplot as plt
 import numpy as np
-
+from collections import defaultdict
 
 def get_contour_precedence(contour, cols):
     tolerance_factor = 10
@@ -157,7 +157,7 @@ mini_cont.sort(key=lambda x: get_contour_precedence(x, second.shape[1]))
 # for i in range(len(mini_cont)):
 #     second = cv2.putText(second, str(i), cv2.boundingRect(mini_cont[i])[:2], cv2.FONT_ITALIC, 1, [125])
 
-from collections import defaultdict
+
 
 new_pos = dict()
 cols = defaultdict(list)
@@ -228,9 +228,11 @@ mssv_thresh = cv2.threshold(mssv, 150, 255, cv2.THRESH_BINARY_INV | cv2.THRESH_O
 #
 # cv2.imshow('ma de', ma_de)
 # cv2.imwrite(f'ma_de.jpg', ma_de)
-
-# cv2.imshow('second', second)
+#
 # cv2.imwrite('col_num.jpg', second)
-
+#
 # plt.show()
-# cv2.waitKey(0)
+cv2.imshow('one', warped)
+cv2.imshow('second', second)
+
+cv2.waitKey(0)
