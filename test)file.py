@@ -34,7 +34,7 @@ def main():
     img = cv2.imread('block0.jpg', )
     img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     # _, img = cv2.threshold(img, 240, 255, cv2.THRESH_BINARY)
-
+    thresh
     circles = cv2.HoughCircles(
         image=img,
         method=cv2.HOUGH_GRADIENT,
